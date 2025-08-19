@@ -74,6 +74,7 @@ export interface BugCommandSettings {
 
 export interface ChatCompressionSettings {
   contextPercentageThreshold?: number;
+  tokenBufferThreshold?: number | null;
 }
 
 export interface SummarizeToolOutputSettings {

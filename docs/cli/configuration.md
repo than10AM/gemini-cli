@@ -290,11 +290,18 @@ In addition to a project settings file, a project's `.gemini` directory can cont
   - **Description:** Controls the settings for chat history compression, both automatic and
     when manually invoked through the /compress command.
   - **Properties:**
-    - **`contextPercentageThreshold`** (number): A value between 0 and 1 that specifies the token threshold for compression as a percentage of the model's total token limit. For example, a value of `0.6` will trigger compression when the chat history exceeds 60% of the token limit.
-  - **Example:**
+    - **`tokenBufferThreshold`** (number): Specifies the number of tokens to keep as a buffer before triggering compression. When the remaining tokens in the model's context window are less than or equal to this value, compression will be triggered. Default is `10000` (10k tokens).
+    - **`contextPercentageThreshold`** (number): A value between 0 and 1 that specifies the token threshold for compression as a percentage of the model's total token limit. For example, a value of `0.6` will trigger compression when the chat history exceeds 60% of the token limit. This is used as a fallback when `tokenBufferThreshold` is explicitly set to `null`.
+  - **Examples:**
     ```json
     "chatCompression": {
-      "contextPercentageThreshold": 0.6
+      "tokenBufferThreshold": 15000
+    }
+    ```
+    ```json
+    "chatCompression": {
+      "contextPercentageThreshold": 0.6,
+      "tokenBufferThreshold": null
     }
     ```
 

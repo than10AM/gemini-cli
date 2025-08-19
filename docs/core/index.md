@@ -30,9 +30,16 @@ The core plays a vital role in security:
 
 ## Chat history compression
 
-To ensure that long conversations don't exceed the token limits of the Gemini model, the core includes a chat history compression feature.
+To ensure that long conversations don't exceed the token limits of the Gemini model, the core includes an automatic chat history compression feature.
 
-When a conversation approaches the token limit for the configured model, the core automatically compresses the conversation history before sending it to the model. This compression is designed to be lossless in terms of the information conveyed, but it reduces the overall number of tokens used.
+**Auto-compression behavior (new default):**
+By default, the core automatically compresses the conversation history when the remaining tokens in the model's context window are 10,000 or fewer. This ensures that there is always sufficient space for new user messages and model responses.
+
+**Configuration options:**
+- **Token buffer threshold:** You can configure a custom token buffer (e.g., 15,000 tokens) via the `tokenBufferThreshold` setting.
+- **Percentage threshold:** You can disable token buffer compression and use the legacy percentage-based compression by setting `tokenBufferThreshold` to `null` and configuring `contextPercentageThreshold`.
+
+The compression process is designed to be lossless in terms of the information conveyed, but it reduces the overall number of tokens used by summarizing earlier parts of the conversation while preserving the most recent context.
 
 You can find the token limits for each model in the [Google AI documentation](https://ai.google.dev/gemini-api/docs/models).
 

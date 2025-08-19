@@ -514,14 +514,15 @@ describe('Gemini Client (client.ts)', () => {
     });
 
     it('should not trigger summarization if token count is below threshold', async () => {
-      const MOCKED_TOKEN_LIMIT = 1000;
+      const MOCKED_TOKEN_LIMIT = 100_000; // Use larger limit to test buffer logic
       vi.mocked(tokenLimit).mockReturnValue(MOCKED_TOKEN_LIMIT);
       mockGetHistory.mockReturnValue([
         { role: 'user', parts: [{ text: '...history...' }] },
       ]);
 
+      // Set token count so remaining tokens = 15k (above 10k default buffer)
       mockCountTokens.mockResolvedValue({
-        totalTokens: MOCKED_TOKEN_LIMIT * 0.699, // TOKEN_THRESHOLD_FOR_SUMMARIZATION = 0.7
+        totalTokens: MOCKED_TOKEN_LIMIT - 15_000,
       });
 
       const initialChat = client.getChat();
@@ -703,6 +704,113 @@ describe('Gemini Client (client.ts)', () => {
 
       // Assert that the chat was reset
       expect(newChat).not.toBe(initialChat);
+    });
+
+    it('should trigger compression when remaining tokens are less than or equal to default token buffer (10k)', async () => {
+      const MOCKED_TOKEN_LIMIT = 100_000;
+      vi.mocked(tokenLimit).mockReturnValue(MOCKED_TOKEN_LIMIT);
+      mockGetHistory.mockReturnValue([
+        { role: 'user', parts: [{ text: '...history...' }] },
+      ]);
+
+      // Set token count so remaining tokens = 8k (less than 10k buffer)
+      const originalTokenCount = MOCKED_TOKEN_LIMIT - 8_000;
+      const newTokenCount = 5_000;
+
+      mockCountTokens
+        .mockResolvedValueOnce({ totalTokens: originalTokenCount })
+        .mockResolvedValueOnce({ totalTokens: newTokenCount });
+
+      mockSendMessage.mockResolvedValue({
+        role: 'model',
+        parts: [{ text: 'This is a summary.' }],
+      });
+
+      const result = await client.tryCompressChat('prompt-id-auto-compress');
+
+      expect(result).toEqual({
+        originalTokenCount,
+        newTokenCount,
+      });
+      expect(mockSendMessage).toHaveBeenCalled();
+    });
+
+    it('should not trigger compression when remaining tokens are greater than default token buffer (10k)', async () => {
+      const MOCKED_TOKEN_LIMIT = 100_000;
+      vi.mocked(tokenLimit).mockReturnValue(MOCKED_TOKEN_LIMIT);
+      mockGetHistory.mockReturnValue([
+        { role: 'user', parts: [{ text: '...history...' }] },
+      ]);
+
+      // Set token count so remaining tokens = 15k (greater than 10k buffer)
+      const originalTokenCount = MOCKED_TOKEN_LIMIT - 15_000;
+
+      mockCountTokens.mockResolvedValue({ totalTokens: originalTokenCount });
+
+      const result = await client.tryCompressChat('prompt-id-no-compress');
+
+      expect(result).toBeNull();
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('should use custom token buffer threshold when configured', async () => {
+      const MOCKED_TOKEN_LIMIT = 100_000;
+      const CUSTOM_TOKEN_BUFFER = 20_000;
+      
+      vi.mocked(tokenLimit).mockReturnValue(MOCKED_TOKEN_LIMIT);
+      mockGetHistory.mockReturnValue([
+        { role: 'user', parts: [{ text: '...history...' }] },
+      ]);
+
+      // Mock getChatCompression to return custom token buffer
+      vi.spyOn(client['config'], 'getChatCompression').mockReturnValue({
+        tokenBufferThreshold: CUSTOM_TOKEN_BUFFER,
+      });
+
+      // Set token count so remaining tokens = 15k (less than 20k custom buffer)
+      const originalTokenCount = MOCKED_TOKEN_LIMIT - 15_000;
+      const newTokenCount = 5_000;
+
+      mockCountTokens
+        .mockResolvedValueOnce({ totalTokens: originalTokenCount })
+        .mockResolvedValueOnce({ totalTokens: newTokenCount });
+
+      mockSendMessage.mockResolvedValue({
+        role: 'model',
+        parts: [{ text: 'This is a summary.' }],
+      });
+
+      const result = await client.tryCompressChat('prompt-id-custom-buffer');
+
+      expect(result).toEqual({
+        originalTokenCount,
+        newTokenCount,
+      });
+      expect(mockSendMessage).toHaveBeenCalled();
+    });
+
+    it('should fall back to percentage threshold when token buffer is explicitly disabled (null)', async () => {
+      const MOCKED_TOKEN_LIMIT = 100_000;
+      vi.mocked(tokenLimit).mockReturnValue(MOCKED_TOKEN_LIMIT);
+      mockGetHistory.mockReturnValue([
+        { role: 'user', parts: [{ text: '...history...' }] },
+      ]);
+
+      // Mock getChatCompression to disable token buffer and use percentage threshold
+      vi.spyOn(client['config'], 'getChatCompression').mockReturnValue({
+        tokenBufferThreshold: null,
+        contextPercentageThreshold: 0.8,
+      });
+
+      // Set token count to 75% of limit (below 80% threshold, so should not compress)
+      const originalTokenCount = MOCKED_TOKEN_LIMIT * 0.75;
+
+      mockCountTokens.mockResolvedValue({ totalTokens: originalTokenCount });
+
+      const result = await client.tryCompressChat('prompt-id-percentage-fallback');
+
+      expect(result).toBeNull();
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
   });
 

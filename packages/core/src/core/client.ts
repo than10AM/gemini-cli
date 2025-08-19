@@ -107,6 +107,12 @@ const COMPRESSION_TOKEN_THRESHOLD = 0.7;
  */
 const COMPRESSION_PRESERVE_THRESHOLD = 0.3;
 
+/**
+ * Default token buffer threshold for auto-compression.
+ * When remaining tokens are less than or equal to this value, compression will be triggered.
+ */
+const DEFAULT_COMPRESSION_TOKEN_BUFFER = 10_000;
+
 export class GeminiClient {
   private chat?: GeminiChat;
   private contentGenerator?: ContentGenerator;
@@ -780,15 +786,41 @@ export class GeminiClient {
       return null;
     }
 
-    const contextPercentageThreshold =
-      this.config.getChatCompression()?.contextPercentageThreshold;
+    const chatCompressionConfig = this.config.getChatCompression();
+    const contextPercentageThreshold = chatCompressionConfig?.contextPercentageThreshold;
+    const tokenBufferThreshold = chatCompressionConfig?.tokenBufferThreshold;
 
     // Don't compress if not forced and we are under the limit.
     if (!force) {
-      const threshold =
-        contextPercentageThreshold ?? COMPRESSION_TOKEN_THRESHOLD;
-      if (originalTokenCount < threshold * tokenLimit(model)) {
-        return null;
+      const modelTokenLimit = tokenLimit(model);
+      
+      // Check token buffer threshold first
+      if (tokenBufferThreshold !== undefined) {
+        if (tokenBufferThreshold === null) {
+          // Token buffer explicitly disabled, use percentage threshold
+          if (contextPercentageThreshold !== undefined) {
+            if (originalTokenCount < contextPercentageThreshold * modelTokenLimit) {
+              return null;
+            }
+          } else {
+            // Use original default percentage threshold
+            if (originalTokenCount < COMPRESSION_TOKEN_THRESHOLD * modelTokenLimit) {
+              return null;
+            }
+          }
+        } else {
+          // Use configured token buffer threshold
+          const remainingTokens = modelTokenLimit - originalTokenCount;
+          if (remainingTokens > tokenBufferThreshold) {
+            return null;
+          }
+        }
+      } else {
+        // No token buffer configuration, use default token buffer
+        const remainingTokens = modelTokenLimit - originalTokenCount;
+        if (remainingTokens > DEFAULT_COMPRESSION_TOKEN_BUFFER) {
+          return null;
+        }
       }
     }
 
@@ -910,4 +942,5 @@ export class GeminiClient {
 export const TEST_ONLY = {
   COMPRESSION_PRESERVE_THRESHOLD,
   COMPRESSION_TOKEN_THRESHOLD,
+  DEFAULT_COMPRESSION_TOKEN_BUFFER,
 };
